@@ -264,11 +264,18 @@ class CreateOrder(graphene.Mutation):
 # Root Query & Mutation
 # -----------------
 class Query(graphene.ObjectType):
-    """
-    Intentionally minimal for Task 2.
-    (Your project-level schema can combine this with other queries, e.g., a 'hello' field.)
-    """
-    pass
+    all_customers = graphene.List(CustomerType)
+    all_products = graphene.List(ProductType)
+    all_orders = graphene.List(OrderType)
+
+    def resolve_all_customers(root, info):
+        return Customer.objects.all()
+
+    def resolve_all_products(root, info):
+        return Product.objects.all()
+
+    def resolve_all_orders(root, info):
+        return Order.objects.select_related("customer").prefetch_related("products").all()
 
 
 class Mutation(graphene.ObjectType):
