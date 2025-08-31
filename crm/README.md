@@ -1,31 +1,75 @@
-# CRM Weekly Report — Quick Setup & Run (Celery + Beat)
+# CRM Project Setup Guide
 
-1. **Install Redis & Python dependencies**
-   ```bash
-   # Ubuntu/Debian
-   sudo apt-get update && sudo apt-get install -y redis-server
-   sudo systemctl enable --now redis-server
+This guide will walk you through setting up the CRM project, installing dependencies, running migrations, and starting background workers.
 
-   # From your project root (where requirements.txt lives)
-   pip install -r requirements.txt
-   ```
+---
 
-2. **Run Django migrations**
-   ```bash
-   python manage.py migrate
-   ```
+## 1. Install Redis and Dependencies
 
-3. **Start the Celery worker**
-   ```bash
-   celery -A crm worker -l info
-   ```
+### On Ubuntu/Debian
+```bash
+sudo apt update
+sudo apt install redis-server
+```
 
-4. **Start Celery Beat (scheduler)**
-   ```bash
-   celery -A crm beat -l info
-   ```
+Start and enable Redis:
+```bash
+sudo systemctl enable redis-server
+sudo systemctl start redis-server
+```
 
-5. **Verify the report logs**
-   ```bash
-   tail -n 50 /tmp/crm_report_log.txt
-   ```
+### On macOS (Homebrew)
+```bash
+brew install redis
+brew services start redis
+```
+
+### Python Dependencies
+Install required Python packages:
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## 2. Run Migrations
+
+Apply database migrations:
+```bash
+python manage.py migrate
+```
+
+---
+
+## 3. Start Celery Worker
+
+Run the Celery worker to process background tasks:
+```bash
+celery -A crm worker -l info
+```
+
+---
+
+## 4. Start Celery Beat
+
+Run the Celery Beat scheduler for periodic tasks:
+```bash
+celery -A crm beat -l info
+```
+
+---
+
+## 5. Verify Logs
+
+Celery task logs are written to:
+```
+/tmp/crm_report_log.txt
+```
+
+Use `tail` to monitor logs:
+```bash
+tail -f /tmp/crm_report_log.txt
+```
+
+---
+
