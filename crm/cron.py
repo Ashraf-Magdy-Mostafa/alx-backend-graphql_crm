@@ -1,27 +1,35 @@
-# crm/cron.py
+import requests
 import datetime
+from gql import gql, Client
+from gql.transport.requests import RequestsHTTPTransport
 
 
-def log_crm_heartbeat():
-    """
-    Logs: DD/MM/YYYY-HH:MM:SS CRM is alive
-    Also tries to ping the GraphQL hello field (optional).
-    """
-    now_str = datetime.datetime.now().strftime("%d/%m/%Y-%H:%M:%S")
-    line = f"{now_str} CRM is alive\n"
-    with open("/tmp/crm_heartbeat_log.txt", "a", encoding="utf-8") as f:
-        f.write(line)
-
-    # Optional GraphQL ping
+def ping_graphql():
     try:
-        import requests
-        r = requests.post(
-            "http://localhost:8000/graphql",
-            json={"query": "{ hello }"},
-            timeout=5,
+        # Raw requests ping
+        query = {"query": "{ hello }"}
+        response = requests.post("http://localhost:8000/graphql", json=query)
+        response.raise_for_status()
+        result = response.json()
+        print("Raw GraphQL response:", result)
+
+        # Optional gql client ping
+        transport = RequestsHTTPTransport(
+            url="http://localhost:8000/graphql",
+            verify=True,
+            retries=3,
         )
-        # Not strictly used, but you could check r.json() here
-        _ = r.status_code
-    except Exception:
-        # Keep heartbeat tolerant: never crash on network hiccups
-        pass
+        client = Client(transport=transport, fetch_schema_from_transport=True)
+        gql_query = gql("{ hello }")
+        gql_result = client.execute(gql_query)
+        print("gql client response:", gql_result)
+
+    except Exception as e:
+        print("GraphQL ping failed:", e)
+
+    with open("/tmp/crm_heartbeat_log.txt", "a") as f:
+        f.write(f"Heartbeat: {datetime.datetime.now()}")
+
+
+# Call the function
+ping_graphql()
