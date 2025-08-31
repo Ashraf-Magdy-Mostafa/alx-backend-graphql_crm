@@ -1,4 +1,3 @@
-# crm/schema.py
 import re
 from decimal import Decimal, InvalidOperation
 from django.db import transaction, IntegrityError
@@ -40,7 +39,7 @@ class CreateCustomerInput(graphene.InputObjectType):
 
 class CreateProductInput(graphene.InputObjectType):
     name = graphene.String(required=True)
-    price = graphene.Float(required=True)  # we cast to Decimal safely
+    price = graphene.Float(required=True)
     stock = graphene.Int(required=False, default_value=0)
 
 
@@ -51,11 +50,11 @@ class CreateOrderInput(graphene.InputObjectType):
 
 
 # -----------------
-# Simple validators / helpers
+# Validators / helpers
 # -----------------
 _PHONE_PATTERNS = [
-    re.compile(r"^\+\d{7,15}$"),        # +1234567890  (7–15 digits)
-    re.compile(r"^\d{3}-\d{3}-\d{4}$"),  # 123-456-7890
+    re.compile(r"^\+\d{7,15}$"),
+    re.compile(r"^\d{3}-\d{3}-\d{4}$"),
 ]
 
 
@@ -69,7 +68,6 @@ def _valid_phone(phone: str) -> bool:
 # Mutations
 # -----------------
 class CreateCustomer(graphene.Mutation):
-    """Create a single customer with validation and friendly errors."""
     class Arguments:
         input = CreateCustomerInput(required=True)
 
@@ -104,11 +102,6 @@ class CreateCustomer(graphene.Mutation):
 
 
 class BulkCreateCustomers(graphene.Mutation):
-    """
-    Bulk create customers with per-row validation.
-    - Partial success supported: valid rows are created, invalid rows are reported.
-    - Valid rows are inserted within a single transaction.
-    """
     class Arguments:
         input = graphene.List(CreateCustomerInput, required=True)
 
@@ -125,7 +118,6 @@ class BulkCreateCustomers(graphene.Mutation):
         to_create = []
         created = []
 
-        # Track duplicates against DB and within this batch
         existing_emails = {e.lower()
                            for e in Customer.objects.values_list("email", flat=True)}
         seen_in_batch = set()
@@ -163,7 +155,6 @@ class BulkCreateCustomers(graphene.Mutation):
                 with transaction.atomic():
                     created = Customer.objects.bulk_create(to_create)
             except IntegrityError:
-                # Extremely rare race; fall back to row-by-row to salvage valid ones
                 created = []
                 with transaction.atomic():
                     for c in to_create:
@@ -177,7 +168,6 @@ class BulkCreateCustomers(graphene.Mutation):
 
 
 class CreateProduct(graphene.Mutation):
-    """Create a product; price > 0, stock >= 0."""
     class Arguments:
         input = CreateProductInput(required=True)
 
@@ -188,12 +178,10 @@ class CreateProduct(graphene.Mutation):
     @staticmethod
     def mutate(root, info, input: CreateProductInput):
         errs = []
-
         name = (input.name or "").strip()
         if not name:
             errs.append("Name is required.")
 
-        # Cast price to Decimal
         try:
             price = Decimal(str(input.price))
         except (InvalidOperation, TypeError):
@@ -215,13 +203,6 @@ class CreateProduct(graphene.Mutation):
 
 
 class CreateOrder(graphene.Mutation):
-    """
-    Create an order:
-    - customer_id must exist
-    - product_ids must exist and be non-empty
-    - total_amount = sum(product.price)
-    - order_date defaults to now if omitted
-    """
     class Arguments:
         input = CreateOrderInput(required=True)
 
@@ -231,13 +212,11 @@ class CreateOrder(graphene.Mutation):
 
     @staticmethod
     def mutate(root, info, input: CreateOrderInput):
-        # Validate customer
         try:
             customer = Customer.objects.get(pk=input.customer_id)
         except Customer.DoesNotExist:
             return CreateOrder(ok=False, errors=[f"Customer ID {input.customer_id} not found."], order=None)
 
-        # Validate products
         ids = list(input.product_ids or [])
         if not ids:
             return CreateOrder(ok=False, errors=["At least one product must be selected."], order=None)
@@ -247,7 +226,6 @@ class CreateOrder(graphene.Mutation):
         if missing:
             return CreateOrder(ok=False, errors=[f"Invalid product ID(s): {', '.join(sorted(missing))}"], order=None)
 
-        # Create order atomically and compute accurate total
         with transaction.atomic():
             total = sum((p.price for p in products), Decimal("0.00"))
             order = Order.objects.create(
@@ -260,10 +238,34 @@ class CreateOrder(graphene.Mutation):
         return CreateOrder(ok=True, errors=[], order=order)
 
 
+class UpdateLowStockProducts(graphene.Mutation):
+    """Maintenance mutation: bump stock by 10 for products with stock < 10."""
+    ok = graphene.Boolean()
+    message = graphene.String()
+    updated_products = graphene.List(ProductType)
+
+    @classmethod
+    def mutate(cls, root, info):
+        updated = []
+        qs = Product.objects.filter(stock__lt=10)
+        for p in qs:
+            p.stock += 10
+            p.save()
+            updated.append(p)
+
+        return UpdateLowStockProducts(
+            ok=True,
+            message=f"Updated {len(updated)} product(s).",
+            updated_products=updated
+        )
+
+
 # -----------------
 # Root Query & Mutation
 # -----------------
 class Query(graphene.ObjectType):
+    # handy for heartbeat
+    hello = graphene.String(default_value="Hello, GraphQL!")
     all_customers = graphene.List(CustomerType)
     all_products = graphene.List(ProductType)
     all_orders = graphene.List(OrderType)
@@ -283,6 +285,7 @@ class Mutation(graphene.ObjectType):
     bulk_create_customers = BulkCreateCustomers.Field()
     create_product = CreateProduct.Field()
     create_order = CreateOrder.Field()
+    update_low_stock_products = UpdateLowStockProducts.Field()
 
 
 schema = graphene.Schema(query=Query, mutation=Mutation)

@@ -47,3 +47,42 @@ def log_crm_heartbeat():
     except Exception:
         with open(log_file, "a", encoding="utf-8") as f:
             f.write("GraphQL hello (gql client) FAILED\n")
+
+
+def update_low_stock():
+    """
+    Calls the GraphQL mutation to restock products with stock < 10.
+    Logs updated product names + new stock to /tmp/low_stock_updates_log.txt
+    """
+    mutation = """
+    mutation {
+      updateLowStockProducts {
+        ok
+        message
+        updatedProducts { name stock }
+      }
+    }
+    """
+
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    try:
+        import requests
+        r = requests.post(
+            "http://localhost:8000/graphql",
+            json={"query": mutation},
+            timeout=10,
+        )
+        data = r.json()
+        upd = data.get("data", {}).get("updateLowStockProducts", {})
+        products = upd.get("updatedProducts", []) or []
+
+        with open("/tmp/low_stock_updates_log.txt", "a", encoding="utf-8") as f:
+            if products:
+                for p in products:
+                    f.write(f"{ts} {p['name']} -> {p['stock']}\n")
+            else:
+                f.write(f"{ts} No low-stock products to update\n")
+    except Exception as e:
+        with open("/tmp/low_stock_updates_log.txt", "a", encoding="utf-8") as f:
+            f.write(f"{ts} ERROR: {e}\n")
