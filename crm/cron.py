@@ -1,19 +1,38 @@
-import requests
 import datetime
-from gql import gql, Client
+import requests
 from gql.transport.requests import RequestsHTTPTransport
+from gql import gql, Client
 
 
-def ping_graphql():
+def log_crm_heartbeat():
+    """
+    Logs heartbeat into /tmp/crm_heartbeat_log.txt.
+    Format: DD/MM/YYYY-HH:MM:SS CRM is alive
+    Also pings GraphQL { hello } endpoint via requests and gql client.
+    """
+    now_str = datetime.datetime.now().strftime("%d/%m/%Y-%H:%M:%S")
+    log_file = "/tmp/crm_heartbeat_log.txt"
+
+    # Always log heartbeat
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(f"{now_str} CRM is alive\n")
+
+    # --- Raw requests ping ---
     try:
-        # Raw requests ping
-        query = {"query": "{ hello }"}
-        response = requests.post("http://localhost:8000/graphql", json=query)
-        response.raise_for_status()
-        result = response.json()
-        print("Raw GraphQL response:", result)
+        r = requests.post(
+            "http://localhost:8000/graphql",
+            json={"query": "{ hello }"},
+            timeout=5,
+        )
+        if r.ok:
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write("GraphQL hello (requests) OK\n")
+    except Exception:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write("GraphQL hello (requests) FAILED\n")
 
-        # Optional gql client ping
+    # --- gql client ping ---
+    try:
         transport = RequestsHTTPTransport(
             url="http://localhost:8000/graphql",
             verify=True,
@@ -22,14 +41,9 @@ def ping_graphql():
         client = Client(transport=transport, fetch_schema_from_transport=True)
         gql_query = gql("{ hello }")
         gql_result = client.execute(gql_query)
-        print("gql client response:", gql_result)
 
-    except Exception as e:
-        print("GraphQL ping failed:", e)
-
-    with open("/tmp/crm_heartbeat_log.txt", "a") as f:
-        f.write(f"Heartbeat: {datetime.datetime.now()}")
-
-
-# Call the function
-ping_graphql()
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(f"GraphQL hello (gql client) OK: {gql_result}\n")
+    except Exception:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write("GraphQL hello (gql client) FAILED\n")
