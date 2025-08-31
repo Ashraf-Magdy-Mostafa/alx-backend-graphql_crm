@@ -54,6 +54,9 @@ MIDDLEWARE = [
 
 
 ]
+CRONJOBS = [
+    ('*/5 * * * *', 'crm.cron.log_crm_heartbeat'),
+]
 GRAPHENE = {"SCHEMA": "crm.schema.schema"}
 
 ROOT_URLCONF = 'alx_backend_graphql_crm.urls'
